@@ -134,8 +134,8 @@ bool JedecDRAMSystem::AddTransaction(uint64_t hex_addr, bool is_write) {
 
     int channel = GetChannel(hex_addr);
     bool ok = ctrls_[channel]->WillAcceptTransaction(hex_addr, is_write);
-
-    assert(ok);
+    // Below line can rase error when we use multicore simulation in ZSim
+    // assert(ok);
     if (ok) {
         Transaction trans = Transaction(hex_addr, is_write);
         ctrls_[channel]->AddTransaction(trans);

@@ -23,6 +23,12 @@ class MemorySystem {
     void PrintStats() const;
     void ResetStats();
 
+    void setDelayQueue(uint32_t delayQueue); // for no man's land delay (Rommel Sanchez et al)
+
+    uint64_t GetChannelMask();
+    uint64_t GetRankMask();
+    uint64_t GetBankMask();
+    uint64_t GetRowMask();
     bool WillAcceptTransaction(uint64_t hex_addr, bool is_write) const;
     bool AddTransaction(uint64_t hex_addr, bool is_write);
 };
