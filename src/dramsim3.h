@@ -24,6 +24,11 @@ class MemorySystem {
     void ResetStats();
 
     void setDelayQueue(uint32_t delayQueue); // for no man's land delay (Rommel Sanchez et al)
+    void EnableACMatRowBuffer(void* acmInfo); // Enable ACM@RowBuffer
+    void setWriteAddressACM(uint64_t startAddress); 
+    void setSortedReadAddressACM(uint64_t startAddress);
+    void setSizeOfACM(uint64_t numnerOfElement, uint64_t elementSize);
+    uint64_t GetACMDelayforZSimBoundPhase();
 
     uint64_t GetChannelMask();
     uint64_t GetRankMask();

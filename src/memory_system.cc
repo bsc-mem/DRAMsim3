@@ -14,6 +14,11 @@ MemorySystem::MemorySystem(const std::string &config_file,
         dram_system_ = new JedecDRAMSystem(*config_, output_dir, read_callback,
                                            write_callback);
     }
+
+    // ACM@rowBuffer configuration is initialized here. 
+    ACMNextFreeSlot=0; // cycles
+    CurrentCycle=0; // cycles
+    ACMEnable=0; // ACM is disabled by default
 }
 
 MemorySystem::~MemorySystem() {
@@ -24,6 +29,45 @@ MemorySystem::~MemorySystem() {
 void MemorySystem::setDelayQueue(uint32_t delayQueue){
     // cout << "debug (dramsim3): " << "delayQueue is: " << delayQueue << endl;
     DelayQueueWaitCycle = delayQueue;
+}
+
+// Enable ACM@RowBuffer
+void MemorySystem::EnableACMatRowBuffer(void* acmInfo){
+    // printf("ACM Write becomes enable\n");
+    ACMEnable = 1;
+    this->acmInfo = *(static_cast<ACMInfo*>(acmInfo));
+    // cout << "debug (dramsim3): " << "ACM is enable." << endl;
+    // cout << "debug (dramsim3): " << "sortedReadLatency: " << this->acmInfo.sortedReadLatency << endl;
+    // cout << "debug (dramsim3): " << "sortedWriteLatency: " << this->acmInfo.sortedWriteLatency << endl;
+    // cout << "debug (dramsim3): " << "recordSize: " << this->acmInfo.recordSize << endl;
+    // cout << "debug (dramsim3): " << "ACMAllocatedSpace: " << this->acmInfo.ACMAllocatedSpace << endl;
+    // cout << endl << endl; 
+}
+
+void MemorySystem::setWriteAddressACM(uint64_t startAddress) {
+    // cout<< "ACM setWriteAddressACM dramsim3 " << startAddress << endl;
+    ConventionalPerspectiveStartAddress=startAddress;
+}
+
+void MemorySystem::setSortedReadAddressACM(uint64_t startAddress) {
+    // cout<< "ACM setSortedReadAddressACM dramsim3 " << startAddress << endl;
+    SortedPerspectiveStartAddress=startAddress;
+}
+
+void MemorySystem::setSizeOfACM(uint64_t numnerOfElement, uint64_t elementSize) {
+    // cout<< "ACM number of element is " << numnerOfElement <<" and size of element is: " << elementSize << endl;
+    acmInfo.recordSize=elementSize;
+    acmInfo.ACMAllocatedSpace=numnerOfElement*elementSize;
+}
+
+uint64_t MemorySystem::GetACMDelayforZSimBoundPhase() { // happened in Bound phase
+    // printf("%llu %llu %lld, \n",ACMNextFreeSlot, CurrentCycle, ACMNextFreeSlot-CurrentCycle);
+    if (ACMNextFreeSlot>CurrentCycle) {
+        return ACMNextFreeSlot-CurrentCycle;
+    }
+    else { 
+        return 0;
+    }
 }
 
 void MemorySystem::ClockTick() { 
@@ -55,6 +99,7 @@ void MemorySystem::ClockTick() {
     }
     // /////////////////       end of delay queue code       ///////////////////////
 
+    CurrentCycle++; // added for timing management of ACM@RowBuffer
     dram_system_->ClockTick(); 
 }
 
@@ -86,8 +131,47 @@ bool MemorySystem::WillAcceptTransaction(uint64_t hex_addr,
 }
 
 bool MemorySystem::AddTransaction(uint64_t hex_addr, bool is_write) {
-    // Delay Queue used in Missing Link paper of Rommel Sanchez.et al 
-    uint64_t final_Delay_in_Q = DelayQueueWaitCycle;
+    // Delay Queue used in Missing Link paper of Rommel Sanchez. We adopt it for ACM use as well 
+    uint64_t final_Delay_in_Q;
+    double tCK = config_->tCK;
+
+    /////////               Start of acm@RowBuffer Section              /////////
+    // ACM write  
+    uint64_t ACMOccupancy;
+    if (!ACMEnable) { // normal execution without ACM@RowBuffer
+        // printf("ACM Write is not enable\n");
+        final_Delay_in_Q = DelayQueueWaitCycle;
+    }
+    else if( (is_write) && (ConventionalPerspectiveStartAddress<=hex_addr && hex_addr<ConventionalPerspectiveStartAddress+acmInfo.ACMAllocatedSpace) ) {
+        // printf("ACM write access is called in dramsim3\n");
+        ACMOccupancy = (acmInfo.sortedWriteLatency/tCK-1); // 13.33 for ddr4 in MN4 -> 13 (-1 is necessary for correct timings) 
+        if(ACMNextFreeSlot==0 || ACMNextFreeSlot<CurrentCycle) {
+            final_Delay_in_Q = 0; //DELAY_QUEUE_WAIT_CYCLE;
+            ACMNextFreeSlot = CurrentCycle + ACMOccupancy ; 
+        }
+        else {
+            final_Delay_in_Q = (ACMNextFreeSlot-CurrentCycle); // + DELAY_QUEUE_WAIT_CYCLE;
+            ACMNextFreeSlot+= ACMOccupancy; 
+        }
+    }// else if it is ACM SortedRead
+    else if( (!is_write) && (SortedPerspectiveStartAddress<=hex_addr && hex_addr<SortedPerspectiveStartAddress+acmInfo.ACMAllocatedSpace) ) {
+        // printf("ACM read access is called\n");
+        ACMOccupancy = (acmInfo.sortedReadLatency/tCK); // 9.33 for ddr4 in MN4 -> 9 (is error important?)
+        // this should never happened since first we write, then we read!!! 
+        if(ACMNextFreeSlot==0 || ACMNextFreeSlot<CurrentCycle) {
+            final_Delay_in_Q =  ACMOccupancy; 
+            ACMNextFreeSlot = CurrentCycle + ACMOccupancy;
+        }
+        else {
+            final_Delay_in_Q = (ACMNextFreeSlot-CurrentCycle) + ACMOccupancy;  
+            ACMNextFreeSlot += ACMOccupancy;
+        }
+    }// else normal access
+    else {
+        // printf("normal access to ddr4\n");
+        final_Delay_in_Q = DelayQueueWaitCycle;
+    }
+
     // generate delay queue. we add transactions later, after delay cycles reach zero.    
     struct delayedInfo newTransaction = {hex_addr, is_write, final_Delay_in_Q};
     queuedTransactions.push_back(newTransaction);

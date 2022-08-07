@@ -41,6 +41,12 @@ class MemorySystem {
     void ResetStats();
 
 	void setDelayQueue(uint32_t delayQueue);
+	void EnableACMatRowBuffer(void* acmInfo); // Enable ACM@RowBuffer
+	void setWriteAddressACM(uint64_t startAddress);
+ 	void setSortedReadAddressACM(uint64_t startAddress);
+	void setSizeOfACM(uint64_t numnerOfElement, uint64_t elementSize);
+
+	uint64_t GetACMDelayforZSimBoundPhase();
 
 	uint64_t GetChannelMask();
 	uint64_t GetRankMask();
@@ -58,7 +64,17 @@ class MemorySystem {
 	 // here is safe
 	 Config *config_;
 	 BaseDRAMSystem *dram_system_;
-	 uint32_t DelayQueueWaitCycle;
+
+	// added for acm@RowBuffer
+	bool ACMEnable; // ACM@rowBuffer Enable bit
+	uint64_t ACMNextFreeSlot; 
+	uint64_t CurrentCycle; // not directly related to ACM needed here for timing management
+	uint32_t DelayQueueWaitCycle;
+	uint64_t ConventionalPerspectiveStartAddress;
+	uint64_t SortedPerspectiveStartAddress;
+
+	ACMInfo acmInfo;
+
 };
 
 //MemorySystem* GetMemorySystem(const std::string &config_file, const std::string &output_dir,
